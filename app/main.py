@@ -9,10 +9,13 @@ from sqlalchemy.orm import Session
 import time 
 from . import models, schemas
 from .database import engine, get_db
+from app.routes import students
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+app.include_router(students.router)
 
 # Establish a connection to the database 
 while True:
