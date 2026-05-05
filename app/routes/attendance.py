@@ -9,6 +9,7 @@ from app import models
 from app.services.speaker_embedding import generate_embedding
 from datetime import date, datetime
 from app import models
+from app.services.transcription import transcribe_audio
 
 router = APIRouter(
     prefix="/attendance",
@@ -36,22 +37,45 @@ def verify_voice(
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
 
-    input_embedding = generate_embedding(file_path)
+    course = db.query(models.Course).filter(
+        models.Course.id == course_id
+    ).first()
 
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    transcribed_text = transcribe_audio(file_path).lower().strip()
+
+    print("TRANSCRIBED:", transcribed_text)
+
+    if "present" not in transcribed_text:
+        os.remove(file_path)
+        return {
+            "status": "failed",
+            "reason": "invalid_speech",
+            "message": "You must say 'present'"
+        }
+
+    if course.name.lower() not in transcribed_text:
+        os.remove(file_path)
+        return {
+            "status": "failed",
+            "reason": "wrong_course",
+            "message": f"You must mention the course name: {course.name}"
+        }
+
+    input_embedding = generate_embedding(file_path)
     os.remove(file_path)
 
     embeddings = db.query(models.VoiceEmbedding).all()
 
+    if not embeddings:
+        raise HTTPException(status_code=404, detail="No embeddings found")
+
     student_embeddings = {}
 
     for emb in embeddings:
-        if emb.student_id not in student_embeddings:
-            student_embeddings[emb.student_id] = []
-
-        student_embeddings[emb.student_id].append(emb.embedding)
-
-    if not embeddings:
-        raise HTTPException(status_code=404, detail="No embeddings found")
+        student_embeddings.setdefault(emb.student_id, []).append(emb.embedding)
 
     best_student_id = None
     highest_score = -1
@@ -76,6 +100,8 @@ def verify_voice(
 
     if highest_score < THRESHOLD:
         return {
+            "status": "failed",
+            "reason": "no_match",
             "message": "No matching student",
             "score": float(highest_score)
         }
@@ -83,6 +109,15 @@ def verify_voice(
     student = db.query(models.Student).filter(
         models.Student.id == best_student_id
     ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    if course_id not in [c.id for c in student.courses]:
+        raise HTTPException(
+            status_code=403,
+            detail="Student not enrolled in this course"
+        )
 
     today = date.today()
 
@@ -94,11 +129,12 @@ def verify_voice(
 
     if existing_attendance:
         return {
+            "status": "failed",
+            "reason": "already_marked",
             "message": "Attendance already marked for this course today",
             "student_id": best_student_id
         }
 
-    # Save attendance
     new_attendance = models.Attendance(
         student_id=best_student_id,
         course_id=course_id,
@@ -109,13 +145,11 @@ def verify_voice(
     db.add(new_attendance)
     db.commit()
 
-    student = db.query(models.Student).filter(
-        models.Student.id == best_student_id
-    ).first()
-
     return {
+        "status": "success",
         "student_id": student.id,
         "name": student.name,
         "similarity": highest_score,
         "message": "Attendance marked successfully"
     }
+
