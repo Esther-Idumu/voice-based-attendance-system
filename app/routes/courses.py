@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
@@ -9,7 +9,7 @@ router = APIRouter(
 )
 
 @router.post("/")
-def create_course(name: str, db: Session = Depends(get_db)):
+def create_course(name: str = Form(...), db: Session = Depends(get_db)):
     course = models.Course(name=name)
     db.add(course)
     db.commit()
@@ -25,8 +25,8 @@ def get_courses(db: Session = Depends(get_db)):
 
 @router.post("/enroll")
 def enroll_student(
-    student_id: int,
-    course_id: int,
+    student_id: int = Form(...),
+    course_id: int = Form(...),
     db: Session = Depends(get_db)
 ):
     student = db.query(models.Student).filter(
