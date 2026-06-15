@@ -56,14 +56,6 @@ def verify_voice(
             "message": "You must say 'present'"
         }
 
-    if course.name.lower() not in transcribed_text:
-        os.remove(file_path)
-        return {
-            "status": "failed",
-            "reason": "wrong_course",
-            "message": f"You must mention the course name: {course.name}"
-        }
-
     input_embedding = generate_embedding(file_path)
     os.remove(file_path)
 
