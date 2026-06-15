@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 import os
 import uuid
@@ -30,7 +30,7 @@ def get_student(id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/")
-def create_student(name: str, matric_number: str, db: Session = Depends(get_db)):
+def create_student(name: str = Form(...), matric_number: str = Form(...), db: Session = Depends(get_db)):
     student = models.Student(name=name, matric_number=matric_number)
     db.add(student)
     db.commit()
