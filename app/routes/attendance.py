@@ -6,6 +6,7 @@ import numpy as np
 
 from app.database import get_db
 from app import models
+from app.services.audio_converter import convert_to_wav
 from app.services.speaker_embedding import generate_embedding
 from datetime import date, datetime
 from app import models
@@ -32,10 +33,17 @@ def verify_voice(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}.wav")
+    extension = os.path.splitext(file.filename)[1]
+
+    file_path = os.path.join(
+        UPLOAD_DIR,
+        f"{uuid.uuid4()}{extension}"
+    )
 
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
+
+    wav_path = convert_to_wav(file_path)
 
     course = db.query(models.Course).filter(
         models.Course.id == course_id
@@ -44,7 +52,7 @@ def verify_voice(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    transcribed_text = transcribe_audio(file_path).lower().strip()
+    transcribed_text = transcribe_audio(wav_path)
 
     print("TRANSCRIBED:", transcribed_text)
 
@@ -56,7 +64,7 @@ def verify_voice(
             "message": "You must say 'present'"
         }
 
-    input_embedding = generate_embedding(file_path)
+    input_embedding = generate_embedding(wav_path)
     os.remove(file_path)
 
     embeddings = db.query(models.VoiceEmbedding).all()
