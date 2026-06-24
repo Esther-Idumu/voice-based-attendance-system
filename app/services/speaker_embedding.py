@@ -10,8 +10,19 @@ model = EncoderClassifier.from_hparams(
     savedir="pretrained_models/spkrec"
 )
 
-def generate_embedding(file_path: str):
+def generate_embedding(file_path: str, source="Unknown"):
+
+    print("Embedding file:", file_path)
+
     signal, sample_rate = sf.read(file_path)
+    print(f"\n===== {source} AUDIO =====")
+    print("File:", file_path)
+    print("Sample rate:", sample_rate)
+    print("Shape:", signal.shape)
+    print("Duration:", len(signal) / sample_rate)
+
+    print("Sample rate:", sample_rate)
+    print("Shape:", signal.shape)
 
     # convert to torch tensor
     signal = torch.tensor(signal).float()
@@ -26,3 +37,8 @@ def generate_embedding(file_path: str):
     embedding = model.encode_batch(signal)
 
     return embedding.squeeze().tolist()
+
+    print("First 10 embedding values:")
+    print(embedding_list[:10])
+
+    return embedding_list

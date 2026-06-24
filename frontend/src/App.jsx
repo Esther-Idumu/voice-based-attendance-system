@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 const API_BASE = 'http://127.0.0.1:8000'
 
@@ -19,6 +19,12 @@ function App() {
   const [verifyCourseId, setVerifyCourseId] = useState('')
   const [verifyFile, setVerifyFile] = useState(null)
   const [verifyCourseInput, setVerifyCourseInput] = useState('')
+
+  const [recording, setRecording] = useState(false)
+  const [recordedBlob, setRecordedBlob] = useState(null)
+
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
 
   useEffect(() => {
     fetchStudents()
@@ -150,13 +156,24 @@ function App() {
 
   const verifyAttendance = async (event) => {
     event.preventDefault()
-    if (!verifyCourseId || !verifyFile) {
+    if (!verifyCourseId || !verifyFile && !recordedBlob) {
       setMessage('Select a course, mention it in your voice, and upload the file.')
       return
     }
 
     const formData = new FormData()
-    formData.append('file', verifyFile)
+    if (recordedBlob) {
+    formData.append(
+      "file",
+      recordedBlob,
+      "recording.webm"
+    )
+  } else {
+    formData.append(
+      "file",
+      verifyFile
+    )
+  }
 
     try {
       const res = await fetch(`${API_BASE}/attendance/verify?course_id=${verifyCourseId}`, {
@@ -171,13 +188,58 @@ function App() {
     }
   }
 
+  const startRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    })
+
+    const mediaRecorder = new MediaRecorder(stream)
+
+    mediaRecorderRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = (event) => {
+      chunksRef.current.push(event.data)
+    }
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(
+        chunksRef.current,
+        { type: "audio/webm" }
+      )
+
+      setRecordedBlob(blob)
+
+      setMessage(
+        "Recording complete. Click Verify Attendance."
+      )
+    }
+
+    mediaRecorder.start()
+
+    setRecording(true)
+
+    setMessage("Recording...")
+  } catch (error) {
+    console.error(error)
+    setMessage("Unable to access microphone")
+  }
+}
+
+const stopRecording = () => {
+  mediaRecorderRef.current.stop()
+  setRecording(false)
+}
+
   return (
     <div className="app-shell">
       <header>
         <h1>Voice Attendance System</h1>
-        <p>Use the forms below to manage students, courses, enroll voice samples, and verify attendance.</p>
+        <p>Use the forms below...</p>
       </header>
 
+      <div className="dashboard-grid">
       <section className="panel">
         <h2>Students</h2>
         <form onSubmit={createStudent} className="form-grid">
@@ -191,20 +253,6 @@ function App() {
           </label>
           <button type="submit">Create Student</button>
         </form>
-        <div className="list-box">
-          <h3>Existing students</h3>
-          {students.length ? (
-            <ul>
-              {students.map((student) => (
-                <li key={student.id}>
-                  {student.name} ({student.matric_number})
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No students yet.</p>
-          )}
-        </div>
       </section>
 
       <section className="panel">
@@ -216,18 +264,6 @@ function App() {
           </label>
           <button type="submit">Create Course</button>
         </form>
-        <div className="list-box">
-          <h3>Existing courses</h3>
-          {courses.length ? (
-            <ul>
-              {courses.map((course) => (
-                <li key={course.id}>{course.name}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>No courses yet.</p>
-          )}
-        </div>
       </section>
 
       <section className="panel">
@@ -281,6 +317,32 @@ function App() {
         </form>
       </section>
 
+      <section className="record-panel">
+      <h2>Voice Recorder</h2>
+
+      <p>
+        Record your attendance statement directly from the browser.
+      </p>
+
+      {!recording ? (
+        <button
+          type="button"
+          onClick={startRecording}
+          className="record-btn"
+        >
+          Start Recording
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={stopRecording}
+          className="record-btn recording"
+        >
+          ⏹ Stop Recording
+        </button>
+      )}
+      </section>
+
       <section className="panel">
         <h2>Verify Attendance</h2>
         <form onSubmit={verifyAttendance} className="form-grid">
@@ -301,8 +363,9 @@ function App() {
           </label>
           <button type="submit">Verify Attendance</button>
         </form>
-        <p className="hint">Your voice should say “present” and mention the selected course name.</p>
+        <p className="hint">Your voice should say “present” clearly before submitting attendance.</p>
       </section>
+      </div>
 
       <footer>
         <div className="status-box">{message || 'Ready'}</div>
