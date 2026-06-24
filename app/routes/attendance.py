@@ -11,6 +11,7 @@ from app.services.speaker_embedding import generate_embedding
 from datetime import date, datetime
 from app import models
 from app.services.transcription import transcribe_audio
+import time 
 
 router = APIRouter(
     prefix="/attendance",
@@ -33,6 +34,7 @@ def verify_voice(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    total_start = time.time()
     extension = os.path.splitext(file.filename)[1]
 
     file_path = os.path.join(
@@ -43,7 +45,10 @@ def verify_voice(
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
 
+    conversion_start = time.time()
     wav_path = convert_to_wav(file_path)
+    conversion_time = time.time() - conversion_start
+
 
     course = db.query(models.Course).filter(
         models.Course.id == course_id
@@ -52,9 +57,13 @@ def verify_voice(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
+    transcription_start = time.time()
     transcribed_text = transcribe_audio(wav_path)
+    transcription_time = time.time() - transcription_start
 
     print("TRANSCRIBED:", transcribed_text)
+    print(f"Transcription Time: {transcription_time:.3f} seconds")
+    print(f"Conversion Time: {conversion_time:.3f} seconds")
 
     if "present" not in transcribed_text:
         os.remove(file_path)
@@ -64,10 +73,25 @@ def verify_voice(
             "message": "You must say 'present'"
         }
 
-    input_embedding = generate_embedding(wav_path)
+    verification_start = time.time()
+    input_embedding = generate_embedding(
+        wav_path,
+        source="VERIFICATION"
+        )
+    
+    verification_time = time.time() - verification_start
+    print(f"Speaker Verification Time: {verification_time:.3f} seconds")
+    print("Input embedding length:", len(input_embedding))
     os.remove(file_path)
 
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    if os.path.exists(wav_path):
+        os.remove(wav_path)
+
     embeddings = db.query(models.VoiceEmbedding).all()
+    print(f"Embeddings found: {len(embeddings)}")
 
     if not embeddings:
         raise HTTPException(status_code=404, detail="No embeddings found")
@@ -87,7 +111,13 @@ def verify_voice(
             if len(emb) != len(input_embedding):
                 continue
 
+            print("Stored embedding length:", len(emb))
+
             score = cosine_similarity(input_embedding, emb)
+
+            print(
+                f"Student {student_id} similarity: {score}"
+            )
 
             if score > student_best_score:
                 student_best_score = score
@@ -95,9 +125,13 @@ def verify_voice(
         if student_best_score > highest_score:
             highest_score = student_best_score
             best_student_id = student_id
+            print("Current best:", best_student_id)
 
-    THRESHOLD = 0.75
+    THRESHOLD = 0.40
 
+    print("Highest score:", highest_score)
+    print("Best student:", best_student_id)
+    
     if highest_score < THRESHOLD:
         return {
             "status": "failed",
@@ -135,6 +169,7 @@ def verify_voice(
             "student_id": best_student_id
         }
 
+    attendance_start = time.time()
     new_attendance = models.Attendance(
         student_id=best_student_id,
         course_id=course_id,
@@ -145,11 +180,31 @@ def verify_voice(
     db.add(new_attendance)
     db.commit()
 
+    attendance_time = time.time() - attendance_start
+
+    print(
+        f"Attendance Marking Time: "
+        f"{attendance_time:.3f} seconds"
+    )
+
+    total_time = time.time() - total_start
+
+    print(
+        f"TOTAL PROCESSING TIME: "
+        f"{total_time:.3f} seconds"
+    )
+
     return {
         "status": "success",
         "student_id": student.id,
         "name": student.name,
         "similarity": highest_score,
-        "message": "Attendance marked successfully"
+        "message": "Attendance marked successfully",
+
+        "audio_conversion_time": round(conversion_time, 3),
+        "transcription_time": round(transcription_time, 3),
+        "speaker_verification_time": round(verification_time, 3),
+        "attendance_marking_time": round(attendance_time, 3),
+        "total_time": round(total_time, 3)
     }
 
