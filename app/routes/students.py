@@ -58,7 +58,6 @@ def enroll_voice(
 
     from app.services.audio_converter import convert_to_wav
 
-    # Keep original extension
     extension = os.path.splitext(file.filename)[1]
 
     file_path = os.path.join(

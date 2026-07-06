@@ -3,12 +3,7 @@ import subprocess
 
 
 def convert_to_wav(input_path):
-    """
-    Convert any supported audio file
-    (.webm, .m4a, .mp3, .wav)
-    into a 16kHz mono WAV file.
-    """
-
+  
     output_path = os.path.splitext(input_path)[0] + ".wav"
 
     print(f"[Converter] Input: {input_path}")
@@ -18,10 +13,10 @@ def convert_to_wav(input_path):
         subprocess.run(
             [
                 "ffmpeg",
-                "-y",              # overwrite existing file
-                "-i", input_path,  # input file
-                "-ac", "1",        # mono audio
-                "-ar", "16000",    # 16 kHz sample rate
+                "-y",             
+                "-i", input_path,  
+                "-ac", "1",        
+                "-ar", "16000",    
                 output_path
             ],
             check=True,
